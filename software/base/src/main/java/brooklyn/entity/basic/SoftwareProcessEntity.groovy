@@ -1,39 +1,38 @@
 package brooklyn.entity.basic
 
+import groovy.time.TimeDuration
+
 import java.util.concurrent.TimeUnit
 
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-import brooklyn.entity.ConfigKey
+import brooklyn.config.ConfigKey;
 import brooklyn.entity.Entity
+import brooklyn.entity.drivers.DriverDependentEntity
 import brooklyn.entity.trait.Startable
 import brooklyn.event.AttributeSensor
 import brooklyn.event.adapter.ConfigSensorAdapter
 import brooklyn.event.adapter.SensorRegistry
 import brooklyn.event.basic.BasicAttributeSensor
-
 import brooklyn.event.basic.BasicConfigKey
-
 import brooklyn.location.Location
 import brooklyn.location.MachineLocation
 import brooklyn.location.MachineProvisioningLocation
 import brooklyn.location.NoMachinesAvailableException
 import brooklyn.location.PortRange
-import brooklyn.location.basic.LocalhostMachineProvisioningLocation;
+import brooklyn.location.basic.LocalhostMachineProvisioningLocation
 import brooklyn.location.basic.SshMachineLocation
 import brooklyn.location.basic.jclouds.JcloudsLocation.JcloudsSshMachineLocation
+import brooklyn.util.MutableMap
 import brooklyn.util.flags.SetFromFlag
 import brooklyn.util.internal.Repeater
-import brooklyn.util.task.Tasks;
+import brooklyn.util.task.Tasks
 
 import com.google.common.base.Preconditions
 import com.google.common.base.Predicate
-import com.google.common.base.Throwables;
 import com.google.common.collect.Iterables
 import com.google.common.collect.Maps
-import groovy.time.TimeDuration
-import brooklyn.entity.drivers.DriverDependentEntity
 
 /**
  * An {@link Entity} representing a piece of software which can be installed, run, and controlled.
@@ -89,6 +88,10 @@ public abstract class SoftwareProcessEntity extends AbstractEntity implements St
 		setAttribute(SERVICE_UP, false)
 		setAttribute(SERVICE_STATE, Lifecycle.CREATED)
 	}
+    
+    public SoftwareProcessEntity(Entity owner) {
+        this(new MutableMap(), owner);
+    }
 
     protected void setProvisioningLocation(MachineProvisioningLocation val) {
         if (provisioningLoc) throw new IllegalStateException("Cannot change provisioning location: existing="+provisioningLoc+"; new="+val)
@@ -214,6 +217,9 @@ public abstract class SoftwareProcessEntity extends AbstractEntity implements St
             machine = location.obtain(flags);
         }
 		if (machine == null) throw new NoMachinesAvailableException(location)
+		if (LOG.isDebugEnabled())
+		    LOG.debug("SoftwareProcessEntity {} obtained new location instance {}, details {}", this, machine,
+		            machine.getUser()+":"+Entities.sanitize(machine.getConfig()))
         if (!(location in LocalhostMachineProvisioningLocation))
             LOG.info("SoftwareProcessEntity {} obtained a new location instance {}, now preparing process there", this, machine)
 		startInLocation(machine)

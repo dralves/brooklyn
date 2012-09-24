@@ -5,7 +5,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
-import brooklyn.entity.ConfigKey;
+import brooklyn.config.ConfigKey;
 import brooklyn.management.ExecutionContext;
 import brooklyn.util.internal.ConfigKeySelfExtracting;
 import brooklyn.util.task.Tasks;
@@ -15,7 +15,7 @@ import com.google.common.base.Splitter;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 
-public class BasicConfigKey<T> implements ConfigKey<T>, ConfigKeySelfExtracting<T>, Serializable {
+public class BasicConfigKey<T> implements ConfigKeySelfExtracting<T>, Serializable {
     private static final long serialVersionUID = -1762014059150215376L;
     
     private static final Splitter dots = Splitter.on('.');
@@ -84,13 +84,12 @@ public class BasicConfigKey<T> implements ConfigKey<T>, ConfigKeySelfExtracting<
         if (!(obj instanceof BasicConfigKey)) return false;
         BasicConfigKey<?> o = (BasicConfigKey<?>) obj;
         
-        return Objects.equal(name,  o.name) && Objects.equal(typeName,  o.typeName) && 
-                Objects.equal(description,  o.description) && Objects.equal(defaultValue,  o.defaultValue);
+        return Objects.equal(name,  o.name);
     }
     
     @Override
     public int hashCode() {
-        return Objects.hashCode(name, type, typeName, description, defaultValue);
+        return Objects.hashCode(name);
     }
     
     @Override

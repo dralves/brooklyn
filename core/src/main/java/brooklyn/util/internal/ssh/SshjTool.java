@@ -60,11 +60,11 @@ import org.jclouds.io.payloads.StringPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import brooklyn.util.IdGenerator;
 import brooklyn.util.flags.TypeCoercions;
 import brooklyn.util.internal.SshTool;
 import brooklyn.util.internal.StreamGobbler;
-import brooklyn.util.internal.StringEscapeUtils;
+import brooklyn.util.text.Identifiers;
+import brooklyn.util.text.StringEscapes.BashStringEscapes;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
@@ -128,10 +128,12 @@ public class SshjTool implements SshTool {
     private final String user;
     private final String password;
     private final int port;
+    private String privateKeyPassphrase;
     private String privateKeyData;
     private File privateKeyFile;
     private boolean strictHostKeyChecking;
     private boolean allocatePTY;
+
 
     public static Builder builder() {
         return new Builder();
@@ -142,6 +144,7 @@ public class SshjTool implements SshTool {
         private String user = System.getProperty("user.name");
         private String password;
         private int port = 22;
+        public String privateKeyPassphrase;
         private String privateKeyData;
         private Set<String> privateKeyFiles = Sets.newLinkedHashSet();
         private boolean strictHostKeyChecking = false;
@@ -164,6 +167,7 @@ public class SshjTool implements SshTool {
             sshTries = getOptionalVal(props, "sshTries", Integer.class, sshTries);
             sshRetryDelay = getOptionalVal(props, "sshRetryDelay", Long.class, sshRetryDelay);
 
+            privateKeyPassphrase = getOptionalVal(props, "privateKeyPassphrase", String.class, privateKeyPassphrase);
             privateKeyData = getOptionalVal(props, "privateKey", String.class, privateKeyData);
             privateKeyData = getOptionalVal(props, "privateKeyData", String.class, privateKeyData);
 
@@ -186,6 +190,9 @@ public class SshjTool implements SshTool {
         }
         public Builder port(int val) {
             this.port = val; return this;
+        }
+        public Builder privateKeyPassphrase(String val) {
+            this.privateKeyPassphrase = val; return this;
         }
         /** @deprecated 1.4.0, use privateKeyData */
         public Builder privateKey(String val) {
@@ -232,6 +239,7 @@ public class SshjTool implements SshTool {
         allocatePTY = builder.allocatePTY;
         sshTries = builder.sshTries ;
         backoffLimitedRetryHandler = new BackoffLimitedRetryHandler(sshTries, builder.sshRetryDelay);
+        privateKeyPassphrase = builder.privateKeyPassphrase;
         privateKeyData = builder.privateKeyData;
         
         if (builder.privateKeyFiles.size() > 1) {
@@ -254,6 +262,7 @@ public class SshjTool implements SshTool {
                 .hostAndPort(HostAndPort.fromParts(host, port))
                 .username(user)
                 .password(password)
+                .privateKeyPassphrase(privateKeyPassphrase)
                 .privateKeyData(privateKeyData)
                 .privateKeyFile(privateKeyFile)
                 .strictHostKeyChecking(strictHostKeyChecking)
@@ -392,7 +401,7 @@ public class SshjTool implements SshTool {
         OutputStream out = getOptionalVal(props, "out", OutputStream.class, null);
         OutputStream err = getOptionalVal(props, "err", OutputStream.class, null);
         String scriptDir = getOptionalVal(props, "scriptDir", String.class, "/tmp");
-        String scriptPath = scriptDir+"/brooklyn-"+System.currentTimeMillis()+"-"+IdGenerator.makeRandomId(8)+".sh";
+        String scriptPath = scriptDir+"/brooklyn-"+System.currentTimeMillis()+"-"+Identifiers.makeRandomId(8)+".sh";
         
         String scriptContents = toScript(commands, env);
         
@@ -458,6 +467,7 @@ public class SshjTool implements SshTool {
         List<String> allcmds = toCommandSequence(commands, env);
         
         StringBuilder result = new StringBuilder();
+        // -e causes it to fail on any command in the script which has an error (non-zero return code)
         result.append("#!/bin/bash -e"+"\n");
         
         for (String cmd : allcmds) {
@@ -480,7 +490,7 @@ public class SshjTool implements SshTool {
                 LOG.warn("env key-values must not be null; ignoring: key="+entry.getKey()+"; value="+entry.getValue());
                 continue;
             }
-            String escapedVal = StringEscapeUtils.escapeLiteralForDoubleQuotedBash(entry.getValue().toString());
+            String escapedVal = BashStringEscapes.escapeLiteralForDoubleQuotedBash(entry.getValue().toString());
             result.add("export "+entry.getKey()+"=\""+escapedVal+"\"");
         }
         
@@ -862,13 +872,44 @@ public class SshjTool implements SshTool {
                     }
                 }
                 shell.sendEOF();
+                output.close();
                 
                 try {
-                    shell.join(sshClientConnection.getSessionTimeout(), TimeUnit.MILLISECONDS);
+                    int timeout = sshClientConnection.getSessionTimeout();
+                    long timeoutEnd = System.currentTimeMillis() + timeout;
+                    Exception last = null;
+                    do {
+                        if (!shell.isOpen() && ((SessionChannel)session).getExitStatus()!=null)
+                            // shell closed, and exit status returned
+                            break;
+                        boolean endBecauseReturned =
+                            // if either condition is satisfied, then wait 1s in hopes the other does, then return
+                            (!shell.isOpen() || ((SessionChannel)session).getExitStatus()!=null);
+                        try {
+                            shell.join(1000, TimeUnit.MILLISECONDS);
+                        } catch (ConnectionException e) { last = e; }
+                        if (endBecauseReturned)
+                            // shell is still open, ie some process is running
+                            // but we have a result code, so main shell is finished
+                            // we waited one second extra to allow any background process 
+                            // which is nohupped to really be in the background (#162)
+                            // now let's bail out
+                            break;
+                    } while (timeout<=0 || System.currentTimeMillis() < timeoutEnd);
+                    if (shell.isOpen() && ((SessionChannel)session).getExitStatus()==null) {
+                        LOG.debug("Timeout ({}) in SSH shell to {}", sshClientConnection.getSessionTimeout(), this);
+                        // we timed out, or other problem -- reproduce the error
+                        throw last;
+                    }
                     return ((SessionChannel)session).getExitStatus();
-                    
                 } finally {
                     // wait for all stdout/stderr to have been re-directed
+                    try {
+                        shell.close();
+                    } catch (Exception e) {
+                        LOG.debug("ssh shell closing error: "+e);
+                        /* close quietly */
+                    }
                     try {
                         if (outgobbler != null) outgobbler.join();
                         if (errgobbler != null) errgobbler.join();

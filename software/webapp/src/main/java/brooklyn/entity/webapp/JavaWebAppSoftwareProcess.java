@@ -7,8 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,7 +124,8 @@ public abstract class JavaWebAppSoftwareProcess extends SoftwareProcessEntity im
         }
     }
 
-    @Description("Undeploys the given artifact")
+    /** For the DEPLOYED_WARS to be updated, the input must match the result of the call to deploy */ 
+    @Description("Undeploys the given context/artifact")
     public void undeploy(
             @NamedParameter("targetName") String targetName) {
         try {
