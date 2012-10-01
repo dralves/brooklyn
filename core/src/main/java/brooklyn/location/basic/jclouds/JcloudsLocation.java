@@ -470,8 +470,6 @@ public class JcloudsLocation extends AbstractLocation implements MachineProvisio
 //            computeService.getContext().close();
         }
 
-
-
     }
 
     public JcloudsSshMachineLocation rebindMachine(NodeMetadata metadata) throws NoMachinesAvailableException {
