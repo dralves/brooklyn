@@ -24,6 +24,8 @@ import java.util.concurrent.TimeoutException;
 
 import javax.annotation.Nullable;
 
+import brooklyn.location.OsDetails;
+import brooklyn.location.basic.BasicOsDetails;
 import org.jclouds.Constants;
 import org.jclouds.compute.ComputeService;
 import org.jclouds.compute.ComputeServiceContext;
@@ -1006,6 +1008,14 @@ public class JcloudsLocation extends AbstractLocation implements MachineProvisio
                 LoginCredentials credentials = node.getCredentials();
                 return (credentials != null) ? credentials.getPassword() : null;
             }
+        }
+
+        @Override
+        public OsDetails getOsDetails() {
+             return new BasicOsDetails(
+                     node.getOperatingSystem().getName(),
+                     node.getOperatingSystem().getArch(),
+                     node.getOperatingSystem().getVersion());
         }
     }
 
