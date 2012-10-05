@@ -1194,10 +1194,13 @@ public class JcloudsLocation extends AbstractLocation implements MachineProvisio
 
         @Override
         public OsDetails getOsDetails() {
-             return new BasicOsDetails(
-                     node.getOperatingSystem().getName(),
-                     node.getOperatingSystem().getArch(),
-                     node.getOperatingSystem().getVersion());
+            if (node.getOperatingSystem() != null) {
+                return new BasicOsDetails(
+                        node.getOperatingSystem().getName(),
+                        node.getOperatingSystem().getArch(),
+                        node.getOperatingSystem().getVersion());
+            }
+            return super.getOsDetails();
         }
     }
 
