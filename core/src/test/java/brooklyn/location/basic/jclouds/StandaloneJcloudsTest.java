@@ -49,7 +49,7 @@ public class StandaloneJcloudsTest {
     String identity = globals.getFirst("brooklyn.jclouds.aws-ec2.identity");
     String credential = globals.getFirst("brooklyn.jclouds.aws-ec2.credential");
     
-    @Test(groups={"WIP","Live"})
+    @Test//(groups={"WIP","Live"})
     public void createVm() {
         String groupId = "mygroup-"+System.getProperty("user.name")+"-"+UUID.randomUUID().toString();
  
@@ -80,9 +80,6 @@ public class StandaloneJcloudsTest {
             if (node == null) throw new IllegalStateException("No nodes returned");
 
             assertNotNull(node.getOperatingSystem());
-            assertNotNull(node.getOperatingSystem().getName());
-            assertNotNull(node.getOperatingSystem().getVersion());
-            assertNotNull(node.getOperatingSystem().getArch());
 
             Credentials nodeCredentials = node.getCredentials();
             final LoginCredentials expectedCredentials = LoginCredentials.fromCredentials(nodeCredentials);
