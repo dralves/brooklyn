@@ -49,7 +49,7 @@ public class StandaloneJcloudsTest {
     String identity = globals.getFirst("brooklyn.jclouds.aws-ec2.identity");
     String credential = globals.getFirst("brooklyn.jclouds.aws-ec2.credential");
     
-    @Test//(groups={"WIP","Live"})
+    @Test(groups={"WIP","Live"})
     public void createVm() {
         String groupId = "mygroup-"+System.getProperty("user.name")+"-"+UUID.randomUUID().toString();
  
