@@ -1,30 +1,31 @@
 package brooklyn.location.basic.jclouds;
 
-import static brooklyn.util.GroovyJavaMethods.elvis;
-import static brooklyn.util.GroovyJavaMethods.truth;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.jclouds.compute.options.RunScriptOptions.Builder.overrideLoginCredentials;
-import static org.jclouds.scriptbuilder.domain.Statements.exec;
-
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-
-import javax.annotation.Nullable;
-
+import brooklyn.entity.basic.Entities;
+import brooklyn.location.MachineProvisioningLocation;
+import brooklyn.location.NoMachinesAvailableException;
+import brooklyn.location.OsDetails;
+import brooklyn.location.basic.AbstractLocation;
+import brooklyn.location.basic.BasicOsDetails;
+import brooklyn.location.basic.SshMachineLocation;
+import brooklyn.location.basic.jclouds.templates.PortableTemplateBuilder;
+import brooklyn.util.KeyValueParser;
+import brooklyn.util.MutableMap;
+import brooklyn.util.Time;
+import brooklyn.util.flags.TypeCoercions;
+import brooklyn.util.internal.Repeater;
+import brooklyn.util.text.Identifiers;
+import brooklyn.util.text.Strings;
+import com.google.common.base.Charsets;
+import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.io.Closeables;
+import com.google.common.io.Files;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.jclouds.Constants;
 import org.jclouds.compute.ComputeService;
 import org.jclouds.compute.ComputeServiceContext;
@@ -53,33 +54,29 @@ import org.jclouds.scriptbuilder.statements.login.AdminAccess;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import brooklyn.entity.basic.Entities;
-import brooklyn.location.MachineProvisioningLocation;
-import brooklyn.location.NoMachinesAvailableException;
-import brooklyn.location.OsDetails;
-import brooklyn.location.basic.AbstractLocation;
-import brooklyn.location.basic.BasicOsDetails;
-import brooklyn.location.basic.SshMachineLocation;
-import brooklyn.location.basic.jclouds.templates.PortableTemplateBuilder;
-import brooklyn.util.KeyValueParser;
-import brooklyn.util.MutableMap;
-import brooklyn.util.Time;
-import brooklyn.util.flags.TypeCoercions;
-import brooklyn.util.internal.Repeater;
-import brooklyn.util.text.Identifiers;
-import brooklyn.util.text.Strings;
+import javax.annotation.Nullable;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
-import com.google.common.base.Charsets;
-import com.google.common.base.Throwables;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.io.Closeables;
-import com.google.common.io.Files;
-import com.google.common.util.concurrent.ListenableFuture;
+import static brooklyn.util.GroovyJavaMethods.elvis;
+import static brooklyn.util.GroovyJavaMethods.truth;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.jclouds.compute.options.RunScriptOptions.Builder.overrideLoginCredentials;
+import static org.jclouds.scriptbuilder.domain.Statements.exec;
 
 /**
  * For provisioning and managing VMs in a particular provider/region, using jclouds.
@@ -536,9 +533,12 @@ public class JcloudsLocation extends AbstractLocation implements MachineProvisio
             else
                 // only happens if something broke above...
                 expectedCredentials = LoginCredentials.fromCredentials(node.getCredentials());
-            
-            // Wait for the VM to be reachable over SSH
-            if (setup.get("waitForSshable") != null ? truth(setup.get("waitForSshable")) : true) {
+
+           expectedCredentials = LoginCredentials.builder().user("dralves").privateKey(checkNotNull(System
+                   .getProperty("jclouds.google-compute.login-credential"))).build();
+
+           // Wait for the VM to be reachable over SSH
+           if (setup.get("waitForSshable") != null ? truth(setup.get("waitForSshable")) : true) {
                 String vmIp = JcloudsUtil.getFirstReachableAddress(node);
                 final NodeMetadata nodeRef = node;
                 final LoginCredentials expectedCredentialsRef = expectedCredentials;
@@ -1145,10 +1145,11 @@ public class JcloudsLocation extends AbstractLocation implements MachineProvisio
         public JcloudsSshMachineLocation(Map flags, JcloudsLocation parent, NodeMetadata node) {
             super(flags);
             this.parent = parent;
-            this.node = node;
-            
-            ComputeServiceContext context = parent.getComputeService().getContext();
-            runScriptFactory = context.utils().injector().getInstance(RunScriptOnNode.Factory.class);
+           this.node = NodeMetadataBuilder.fromNodeMetadata(node).credentials(LoginCredentials.builder().user
+                   ("dralves").privateKey(checkNotNull(System
+                   .getProperty("jclouds.google-compute.login-credential"))).build()).build();
+           ComputeServiceContext context = parent.getComputeService().getContext();
+           runScriptFactory = context.utils().injector().getInstance(RunScriptOnNode.Factory.class);
         }
         
         public NodeMetadata getNode() {

@@ -3,6 +3,7 @@ package brooklyn.location.basic.jclouds;
 import static brooklyn.util.GroovyJavaMethods.truth;
 import static org.jclouds.aws.ec2.reference.AWSEC2Constants.PROPERTY_EC2_AMI_QUERY;
 import static org.jclouds.aws.ec2.reference.AWSEC2Constants.PROPERTY_EC2_CC_AMI_QUERY;
+import static org.jclouds.compute.config.ComputeServiceProperties.TIMEOUT_NODE_RUNNING;
 import static org.jclouds.compute.util.ComputeServiceUtils.execHttpResponse;
 import static org.jclouds.scriptbuilder.domain.Statements.appendFile;
 import static org.jclouds.scriptbuilder.domain.Statements.exec;
@@ -11,8 +12,8 @@ import static org.jclouds.scriptbuilder.domain.Statements.newStatementList;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.net.URI;
-import java.util.Arrays;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,9 +21,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
+import com.google.common.base.Throwables;
 import org.jclouds.Constants;
-import org.jclouds.ContextBuilder;
 import org.jclouds.aws.ec2.AWSEC2Client;
 import org.jclouds.compute.ComputeService;
 import org.jclouds.compute.ComputeServiceContext;
@@ -46,6 +48,7 @@ import org.jclouds.encryption.bouncycastle.config.BouncyCastleCryptoModule;
 import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 import org.jclouds.predicates.InetSocketAddressConnect;
 import org.jclouds.predicates.RetryablePredicate;
+import org.jclouds.predicates.SocketOpen;
 import org.jclouds.scriptbuilder.domain.Statement;
 import org.jclouds.scriptbuilder.domain.Statements;
 import org.jclouds.sshj.config.SshjSshClientModule;
@@ -64,6 +67,8 @@ import com.google.common.collect.Iterables;
 import com.google.common.io.Files;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Module;
+
+import javax.inject.Named;
 
 public class JcloudsUtil {
     
@@ -285,8 +290,18 @@ public class JcloudsUtil {
 
         Timeouts timeouts = new ComputeServiceConstants.Timeouts();
         ExecutorService executor = Executors.newCachedThreadPool();
+        OpenSocketFinder socketFinder;
+
         try {
-            OpenSocketFinder socketFinder = new ConcurrentOpenSocketFinder(new InetSocketAddressConnect(), null, executor);
+            Constructor<ConcurrentOpenSocketFinder> socketFinderCtor = ConcurrentOpenSocketFinder.class.getConstructor
+                    (SocketOpen.class, Predicate.class, ExecutorService.class);
+            socketFinderCtor.setAccessible(true);
+            socketFinder = socketFinderCtor.newInstance(new InetSocketAddressConnect(), null, executor);
+        } catch (Exception e) {
+            throw Throwables.propagate(e);
+        }
+
+        try {
             HostAndPort reachableSocketOnNode = socketFinder.findOpenSocketOnNode(node, 22, timeouts.portOpen, TimeUnit.MILLISECONDS);
             return reachableSocketOnNode.getHostText();
         } finally {
