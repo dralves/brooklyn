@@ -25,6 +25,11 @@
             <artifactId>brooklyn-all</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.jclouds.labs</groupId>
+            <artifactId>google-compute</artifactId>
+            <version>1.6.0-SNAPSHOT</version>
+        </dependency>
 
         <!-- TODO include examples -->
         <!-- TODO include documentation -->
